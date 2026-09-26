@@ -1,0 +1,1114 @@
+/* Palette carried over from harmony: white page, pale grey chrome, color only when something sounds. */
+:root {
+  --page: #ffffff;
+  --panel: #f4f4f4;
+  --panel-edge: #e6e6e6;
+  --chrome: #cecece;
+  --ink-faint: #c8c8c8;
+  --ink: #9a9a9a;
+  --ink-strong: #707070;
+  --shadow: 0 2px 30px 5px #eeeeee;
+  --accent: #b0b0b0;
+  --cable-back: #dadada;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root,
+.app {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--page);
+  color: var(--ink);
+  font: 14px/1.2 Arial, Helvetica, sans-serif;
+  user-select: none;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.fatal {
+  max-width: 420px;
+  margin: 20vh auto;
+  padding: 0 16px;
+  color: var(--ink-strong);
+  line-height: 1.5;
+}
+
+/* ---- toolbar ---- */
+
+.toolbar,
+.view-options {
+  position: absolute;
+  top: 16px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar {
+  left: 20px;
+}
+
+.view-options {
+  right: 20px;
+}
+
+.brand {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--ink-faint);
+  margin-right: 8px;
+  letter-spacing: 0.02em;
+}
+
+.toolbar button,
+.view-options button {
+  background: var(--page);
+  border: 2px solid var(--panel-edge);
+  border-radius: 4px;
+  padding: 6px 10px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.toolbar button:hover,
+.view-options button:hover {
+  border-color: var(--chrome);
+  color: var(--ink-strong);
+}
+
+.toolbar button.primary {
+  border-color: var(--chrome);
+  color: var(--ink-strong);
+}
+
+.toolbar button.danger {
+  border-color: #dc143c;
+  color: #dc143c;
+}
+
+.view-label {
+  font-size: 12px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.view-options button.selected {
+  border-color: var(--ink);
+  color: var(--ink-strong);
+}
+
+.segmented {
+  display: flex;
+}
+
+.segmented button {
+  border-radius: 0;
+}
+
+.segmented button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.segmented button:last-child {
+  border-radius: 0 4px 4px 0;
+  margin-left: -2px;
+}
+
+.segmented button.selected {
+  position: relative;
+  z-index: 1;
+}
+
+.hint {
+  position: absolute;
+  bottom: 14px;
+  left: 16px;
+  right: 16px;
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+@media (max-width: 760px) {
+  .view-options {
+    top: 60px;
+    left: 20px;
+    right: auto;
+  }
+  .hint {
+    display: none;
+  }
+}
+
+/* ---- palette ---- */
+
+.palette {
+  position: fixed;
+  z-index: 20;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  background: var(--page);
+  border: 2px solid var(--panel-edge);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.palette-search {
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 2px solid var(--panel-edge);
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink-strong);
+  outline: none;
+}
+
+.palette-search::placeholder {
+  color: var(--ink-faint);
+}
+
+.palette-list {
+  max-height: min(380px, 60vh);
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+
+.palette-group {
+  padding: 10px 12px 4px;
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.palette-item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  text-align: left;
+  background: none;
+  border: none;
+}
+
+.palette-item.cursor {
+  background: var(--panel);
+}
+
+.palette-title {
+  display: block;
+  color: var(--ink-strong);
+  font-weight: bold;
+}
+
+.palette-desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.palette-empty {
+  padding: 12px;
+  color: var(--ink);
+}
+
+/* ---- modules ---- */
+
+.module {
+  position: relative;
+  background: var(--panel);
+  border: 2px solid var(--panel-edge);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  transition: border-color 60ms linear;
+}
+
+.module.selected {
+  border-color: var(--chrome);
+}
+
+.module.active {
+  border-color: var(--accent);
+}
+
+.module-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 8px 0 14px;
+  cursor: grab;
+}
+
+.module-title {
+  flex: 1;
+  font-weight: bold;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.led {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  opacity: 0.15;
+}
+
+.collapse {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 4px;
+}
+
+.collapse:hover {
+  background: var(--panel-edge);
+}
+
+.collapse path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.module-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 22px 14px;
+}
+
+.module.compact .module-body {
+  gap: 6px;
+  padding-bottom: 10px;
+}
+
+.note,
+.dim {
+  font-size: 11px;
+  color: var(--ink);
+}
+
+/* ---- generic controls ---- */
+
+.choice {
+  display: flex;
+  gap: 4px;
+}
+
+.choice button {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 2px;
+  display: grid;
+  place-items: center;
+  background: var(--page);
+  border: 2px solid var(--panel-edge);
+  border-radius: 4px;
+  color: var(--ink);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.choice button:hover {
+  border-color: var(--chrome);
+}
+
+.choice button.selected {
+  border-color: var(--accent);
+  color: var(--ink-strong);
+}
+
+.choice svg path {
+  fill: none;
+  stroke: var(--ink-faint);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.choice button.selected svg path {
+  stroke: var(--accent);
+}
+
+.knobs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-around;
+  gap: 6px 2px;
+}
+
+.knob {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 52px;
+}
+
+.knob svg {
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.knob-track,
+.knob-fill {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.knob-track {
+  stroke: var(--panel-edge);
+}
+
+.knob-fill {
+  stroke: var(--accent);
+}
+
+.knob-body {
+  fill: var(--page);
+  stroke: var(--chrome);
+  stroke-width: 2;
+}
+
+.knob-pointer {
+  stroke: var(--ink);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.knob-value {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--ink-strong);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.knob-sub {
+  font-size: 10px;
+  color: var(--ink);
+}
+
+.knob-label {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.controls button,
+.push {
+  height: 28px;
+  padding: 0 8px;
+  background: var(--page);
+  border: 2px solid var(--panel-edge);
+  border-radius: 4px;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.controls button:hover,
+.push:hover {
+  border-color: var(--chrome);
+}
+
+.push:active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--page);
+}
+
+.key-bind {
+  flex: 1;
+}
+
+.key-bind.listening {
+  border-color: var(--accent);
+  color: var(--ink-strong);
+  animation: blink 1s steps(2) infinite;
+}
+
+@keyframes blink {
+  50% {
+    border-color: var(--panel-edge);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .key-bind.listening {
+    animation: none;
+  }
+}
+
+.key-bind kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 4px;
+  border: 1px solid var(--ink);
+  border-radius: 2px;
+  font: bold 12px Arial, Helvetica, sans-serif;
+  color: var(--ink-strong);
+}
+
+.controls .toggle {
+  min-width: 44px;
+}
+
+.controls .toggle.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--page);
+}
+
+/* ---- jacks ---- */
+
+.react-flow__handle.jack {
+  width: 18px;
+  height: 18px;
+  background: var(--ink);
+  border: 5px solid var(--page);
+  border-radius: 50%;
+  outline: 2px solid var(--chrome);
+  cursor: crosshair;
+}
+
+.react-flow__handle.jack:hover,
+.react-flow__handle.jack.connectingto {
+  outline-color: var(--ink);
+}
+
+.react-flow__handle.jack.connectionindicator:not(.connectable) {
+  cursor: not-allowed;
+}
+
+/* Labels sit just outside the panel, under the jack, clear of the border and the plug. */
+.jack-label {
+  position: absolute;
+  font-size: 9px;
+  line-height: 10px;
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.jack-label.in {
+  right: calc(100% + 5px);
+  text-align: right;
+}
+
+.jack-label.out {
+  left: calc(100% + 5px);
+}
+
+/* ---- module panels ---- */
+
+.screen {
+  display: block;
+  width: 100%;
+  background: var(--page);
+  border: 2px solid var(--panel-edge);
+  border-radius: 4px;
+}
+
+.cone {
+  display: block;
+  margin: 0 auto;
+}
+
+.cone-rim {
+  fill: var(--page);
+  stroke: var(--chrome);
+  stroke-width: 2;
+}
+
+.cone-body {
+  fill: var(--panel);
+  stroke: var(--panel-edge);
+  stroke-width: 2;
+}
+
+.cone-cap {
+  fill: var(--chrome);
+}
+
+.cone.sounding .cone-cap {
+  fill: var(--ink);
+}
+
+/* sampler */
+.sample-drop {
+  padding: 6px;
+  background: var(--page);
+  border: 2px dashed var(--panel-edge);
+  border-radius: 4px;
+}
+
+.sample-drop.over {
+  border-color: var(--accent);
+}
+
+.waveform path {
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+
+.sample-name {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--ink-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sample-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.sample-actions button,
+.mic-enable button {
+  flex: 1;
+  height: 26px;
+  background: var(--panel);
+  border: 2px solid var(--panel-edge);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.mic-enable {
+  display: flex;
+}
+
+/* envelope */
+.env-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.env-shape {
+  flex: 1;
+  background: var(--page);
+  border-radius: 4px;
+}
+
+.env-shape polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* keyboard */
+.kbd-keys {
+  position: relative;
+  height: 64px;
+}
+
+.kbd-key {
+  position: absolute;
+  top: 0;
+  height: 64px;
+  background: var(--page);
+  border: 1px solid var(--chrome);
+  border-radius: 0 0 4px 4px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 4px;
+  font-size: 10px;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+
+.kbd-key.black {
+  z-index: 1;
+  height: 38px;
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--panel-edge);
+}
+
+.kbd-key.down {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--page);
+}
+
+.kbd-octave {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ink-strong);
+}
+
+.kbd-octave button {
+  height: 24px;
+  background: var(--page);
+  border: 2px solid var(--panel-edge);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.kbd-compact {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--ink-strong);
+}
+
+/* sequencer */
+.seq {
+  display: flex;
+  justify-content: space-between;
+  gap: 2px;
+}
+
+.seq-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.seq-step .knob {
+  min-width: 0;
+}
+
+.seq-gate {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: var(--page);
+  border: 2px solid var(--chrome);
+  border-radius: 4px;
+}
+
+.seq.compact .seq-gate {
+  width: 16px;
+  height: 16px;
+}
+
+.seq-step:not(.muted) .seq-gate {
+  background: var(--panel-edge);
+}
+
+.seq-step.current .seq-gate {
+  border-color: var(--accent);
+}
+
+.seq-step.current:not(.muted) .seq-gate {
+  background: var(--accent);
+}
+
+.seq-step.muted .knob {
+  opacity: 0.4;
+}
+
+/* arp */
+.arp-notes {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 58px;
+  padding: 4px;
+  background: var(--page);
+  border-radius: 4px;
+}
+
+.arp-notes span {
+  flex: 1;
+  min-height: 4px;
+  background: var(--panel-edge);
+  border-radius: 2px;
+}
+
+.arp-notes span.current {
+  background: var(--accent);
+}
+
+.module.compact .arp-notes {
+  height: 30px;
+}
+
+/* clock */
+.beats {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.beats span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--panel-edge);
+}
+
+.beats span.current {
+  background: var(--accent);
+}
+
+/* random */
+.bipolar-bar {
+  position: relative;
+  height: 10px;
+  background: var(--page);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.bipolar-bar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--chrome);
+}
+
+.bipolar-bar span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--accent);
+}
+
+/* beat grid */
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.grid-row {
+  display: flex;
+  gap: 3px;
+}
+
+.grid-cell {
+  flex: 1;
+  height: 20px;
+  min-width: 0;
+  padding: 0;
+  background: var(--page);
+  border: 2px solid var(--panel-edge);
+  border-radius: 3px;
+}
+
+.grid.compact .grid-cell {
+  height: 12px;
+  border-width: 1px;
+}
+
+.grid-cell.downbeat {
+  border-color: var(--chrome);
+}
+
+.grid-cell.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  opacity: 0.7;
+}
+
+.grid-cell.current {
+  box-shadow: 0 0 0 2px var(--ink-strong);
+}
+
+.grid-cell.on.current {
+  opacity: 1;
+}
+
+.grid-cell.off-end {
+  opacity: 0.25;
+}
+
+/* compressor */
+.gr-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gr-track {
+  flex: 1;
+  height: 8px;
+  background: var(--page);
+  border-radius: 4px;
+  overflow: hidden;
+  direction: rtl;
+}
+
+.gr-track span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.gr-label {
+  width: 52px;
+  font-size: 11px;
+  color: var(--ink-strong);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* tuner */
+.tuner {
+  text-align: center;
+}
+
+.tuner-note {
+  font-size: 26px;
+  font-weight: bold;
+  color: var(--ink-strong);
+}
+
+.module.compact .tuner-note {
+  font-size: 18px;
+}
+
+.tuner-hz {
+  font-size: 11px;
+  color: var(--ink);
+  min-height: 13px;
+  white-space: pre;
+}
+
+.tuner-scale {
+  position: relative;
+  height: 10px;
+  margin-top: 6px;
+  background: linear-gradient(to right, transparent 49%, var(--chrome) 49%, var(--chrome) 51%, transparent 51%), var(--page);
+  border-radius: 5px;
+}
+
+.tuner-needle {
+  position: absolute;
+  top: -2px;
+  width: 4px;
+  height: 14px;
+  margin-left: -2px;
+  background: var(--ink);
+  border-radius: 2px;
+  opacity: 0;
+}
+
+.tuner-needle.in-tune {
+  background: var(--accent);
+}
+
+/* recorder */
+.recorder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rec {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  background: var(--page);
+  border: 2px solid var(--panel-edge);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #dc143c;
+  opacity: 0.5;
+}
+
+.rec.on {
+  border-color: #dc143c;
+}
+
+.rec.on .rec-dot {
+  opacity: 1;
+}
+
+.rec-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-strong);
+  font-size: 12px;
+}
+
+.rec-download {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-strong);
+}
+
+/* ---- cables ---- */
+
+.cable {
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cable.straight {
+  stroke-width: 4;
+}
+
+.selected .cable {
+  stroke-width: 8;
+}
+
+.selected .cable.straight {
+  stroke-width: 6;
+}
+
+.cable-shadow {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.06);
+  stroke-width: 10;
+  stroke-linejoin: round;
+  transform: translateY(4px);
+}
+
+/* cables hang in front of modules, like real patch cords */
+.app:not(.cables-back) .react-flow__edges {
+  z-index: 1001 !important;
+}
+
+.react-flow__edge {
+  pointer-events: none;
+}
+
+.react-flow__edge .react-flow__edge-interaction {
+  fill: none;
+  stroke: #000;
+  stroke-opacity: 0;
+  stroke-width: 18;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+/* Background mode: cables go grey, faint, and sit behind the modules.
+   A selected cable keeps its color so you can find it. */
+.cables-back .react-flow__edge:not(.selected) .cable {
+  stroke: var(--cable-back) !important;
+}
+
+.cables-back .react-flow__edge:not(.selected) .plug-boot,
+.cables-back .react-flow__edge:not(.selected) .plug-band {
+  fill: var(--cable-back) !important;
+}
+
+.cables-back .react-flow__edge:not(.selected) {
+  opacity: 0.7;
+}
+
+.cables-back .cable-shadow {
+  display: none;
+}
+
+/* ---- plugs ---- */
+
+/* Plugs let clicks through to the jack beneath, so you can stack more cables on an output. */
+.plug {
+  pointer-events: none;
+}
+
+.plug-shadow {
+  fill: rgba(0, 0, 0, 0.06);
+}
+
+.plug-nut {
+  fill: #e4e4e4;
+  stroke: var(--chrome);
+  stroke-width: 2;
+}
+
+.plug-nut-inner {
+  fill: #d4d4d4;
+}
+
+.plug-barrel {
+  fill: #f7f7f7;
+  stroke: var(--chrome);
+  stroke-width: 1.5;
+}
+
+.plug-grip {
+  stroke: #dcdcdc;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.plug-band {
+  opacity: 0.85;
+}
+
+.plug-rib {
+  stroke: rgba(0, 0, 0, 0.12);
+  stroke-width: 1.5;
+}
+
+.selected .plug-nut,
+.selected .plug-barrel {
+  stroke: var(--ink);
+}
