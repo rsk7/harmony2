@@ -1037,10 +1037,10 @@ input:focus-visible {
 
 .cable-shadow {
   fill: none;
-  stroke: rgba(0, 0, 0, 0.06);
-  stroke-width: 10;
+  stroke: rgba(0, 0, 0, 0.07);
+  stroke-width: 9;
   stroke-linejoin: round;
-  transform: translateY(4px);
+  transform: translate(1px, 2px); /* lying flat on the table: shadow hugs the cable */
 }
 
 /* cables hang in front of modules, like real patch cords */

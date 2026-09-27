@@ -14,7 +14,7 @@ This is a second take on [harmony](https://github.com/rsk7/harmony) (2015), whic
 - **Play:** the **keyboard** module maps your computer keys like a piano (`a w s e d f t g y h u j k o l p ;`, with `z`/`x` to change octave). Oscillators, envelopes, the sampler and the drums can also be bound to a single key with **bind key**.
 - **Knobs:** drag up/down or scroll. Hold shift for fine control, double-click to reset.
 - **Collapse:** the chevron on each module (or double-clicking its title) switches between the full panel and a compact one with just the main controls. Jacks stay put.
-- **Cables:** choose physics-simulated cables that swing and sag (with a stiff ↔ floppy slider), or straight right-angle wires. **Cables behind** greys them out and moves them under the modules.
+- **Cables:** choose physics-simulated cables that lie on the table like real patch cords (with a stiff ↔ floppy slider), or straight right-angle wires. **Cables behind** greys them out and moves them under the modules.
 - Your patch is saved in the browser automatically. **new patch** starts over.
 
 Start from a preset in the add menu (**drum kit**, **synth voice**, **arp voice**) to hear something right away. Presets patch themselves into the speaker if there is one.
@@ -48,6 +48,6 @@ npm run dev      # http://localhost:5173
 npm run build    # static site in dist/
 ```
 
-Built with Vite, React, TypeScript and [React Flow](https://reactflow.dev). The audio engine (`src/audio/`) is plain Web Audio with no framework. Anything that has to react to gates and clocks sample-accurately (envelope, clock, sequencer, arpeggiator, drum voices, beat grid, sample & hold, recorder) runs in an AudioWorklet (`src/audio/worklets/processors.ts`). Modules are declared in `src/modules/`, and each one lists its jacks, its knobs and how to build its audio nodes. The cable physics is a small Verlet rope simulation in `src/physics/rope.ts`.
+Built with Vite, React, TypeScript and [React Flow](https://reactflow.dev). The audio engine (`src/audio/`) is plain Web Audio with no framework. Anything that has to react to gates and clocks sample-accurately (envelope, clock, sequencer, arpeggiator, drum voices, beat grid, sample & hold, recorder) runs in an AudioWorklet (`src/audio/worklets/processors.ts`). Modules are declared in `src/modules/`, and each one lists its jacks, its knobs and how to build its audio nodes. The cable physics is a small Verlet rope simulation in `src/physics/rope.ts`: seen from above, with gravity pointing into the table, so cables are shaped by their slack, bending stiffness and table friction.
 
 Pushing to `main` deploys to GitHub Pages via `.github/workflows/deploy.yml`.

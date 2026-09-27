@@ -1,21 +1,22 @@
-// Verlet rope: a chain of point masses under gravity, held together by distance
-// constraints, with both ends pinned to the jacks.
+// Verlet rope for cables lying on a table, seen from above: gravity points into the
+// screen, so nothing pulls the cable sideways. Table friction bleeds off motion,
+// bending stiffness keeps curves smooth, and any slack bows the cable out into an arc.
+// Both ends are pinned to the plugs.
 
 type Vec = { x: number; y: number };
 
-const GRAVITY = 2200; // px/s²
 const ITERATIONS = 24; // constraint passes per step; higher = less stretchy rope
-const DT = 1 / 60;
+const STATIC_FRICTION = 0.05; // px/frame; a point that would move less than this stays put
 
-// Floppiness 0..1 maps to how much slack a cable has, how long it keeps swinging,
-// and how easily it bends.
+// Floppiness 0..1 maps to how much slack a cable has, how easily it bends,
+// and how far it slides across the table after being tugged.
 export function ropeFeel(floppiness: number) {
   const f = Math.min(1, Math.max(0, floppiness));
   return {
-    slackScale: 1 + 0.25 * f,
-    slackExtra: 10 + 120 * f, // px
-    damping: 0.93 + 0.06 * f, // velocity kept per step
-    stiffness: 0.25 - 0.23 * f, // pull toward neighbours' midpoint per pass
+    slackScale: 1 + 0.3 * f,
+    slackExtra: 10 + 100 * f, // px
+    damping: 0.75 + 0.12 * f, // velocity kept per step, i.e. 1 - table friction
+    stiffness: 0.12 - 0.09 * f, // how hard skip-one springs resist bending, per pass
   };
 }
 
@@ -33,10 +34,19 @@ export class Rope {
 
   constructor(a: Vec, b: Vec, public length: number, readonly count = 28) {
     this.segment = length / (count - 1);
-    // Start as a straight line between the ends; gravity drops it into a swinging sag.
+    // Start as a parabolic bow whose arc length roughly matches the cable, bulging
+    // toward the bottom of the screen, so the cable is already lying slack.
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const chord = Math.hypot(dx, dy) || 1;
+    const bow = length > chord ? Math.sqrt((3 * chord * (length - chord)) / 8) : 0;
+    let nx = -dy / chord;
+    let ny = dx / chord;
+    if (ny < 0) (nx = -nx), (ny = -ny);
     this.pts = Array.from({ length: count }, (_, i) => {
       const t = i / (count - 1);
-      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      const off = 4 * bow * t * (1 - t);
+      return { x: a.x + dx * t + nx * off, y: a.y + dy * t + ny * off };
     });
     this.prev = this.pts.map((p) => ({ ...p }));
   }
@@ -51,7 +61,6 @@ export class Rope {
   step(a: Vec, b: Vec, feel: RopeFeel, aDir?: Vec, bDir?: Vec) {
     const { pts, prev } = this;
     const n = pts.length;
-    const g = GRAVITY * DT * DT;
     const pinned = (i: number) =>
       i === 0 || i === n - 1 || (i === 1 && !!aDir) || (i === n - 2 && !!bDir);
     const pin = () => {
@@ -69,6 +78,7 @@ export class Rope {
       }
     };
 
+    // Inertia with table friction; no in-plane gravity.
     for (let i = 1; i < n - 1; i++) {
       if (pinned(i)) continue;
       const p = pts[i];
@@ -77,7 +87,7 @@ export class Rope {
       prev[i].x = p.x;
       prev[i].y = p.y;
       p.x += vx;
-      p.y += vy + g;
+      p.y += vy;
     }
 
     for (let k = 0; k < ITERATIONS; k++) {
@@ -100,15 +110,39 @@ export class Rope {
         q.x -= dx * diff * wq;
         q.y -= dy * diff * wq;
       }
-      // Bending: nudge each free point toward the midpoint of its neighbours.
-      for (let i = 1; i < n - 1; i++) {
-        if (pinned(i)) continue;
+      // Bending: points two apart resist getting closer than a straight run allows,
+      // which penalises folds and zigzags so slack settles into one smooth bow.
+      const reach = 2 * this.segment;
+      for (let i = 0; i < n - 2; i++) {
         const p = pts[i];
-        p.x += ((pts[i - 1].x + pts[i + 1].x) / 2 - p.x) * feel.stiffness;
-        p.y += ((pts[i - 1].y + pts[i + 1].y) / 2 - p.y) * feel.stiffness;
+        const q = pts[i + 2];
+        const dx = q.x - p.x;
+        const dy = q.y - p.y;
+        const d = Math.hypot(dx, dy) || 0.0001;
+        if (d >= reach) continue;
+        const fp = !pinned(i);
+        const fq = !pinned(i + 2);
+        if (!fp && !fq) continue;
+        const push = ((reach - d) / d) * feel.stiffness;
+        const wp = fp ? (fq ? 0.5 : 1) : 0;
+        const wq = fq ? (fp ? 0.5 : 1) : 0;
+        p.x -= dx * push * wp;
+        p.y -= dy * push * wp;
+        q.x += dx * push * wq;
+        q.y += dy * push * wq;
       }
     }
     pin();
+
+    // Static friction: tiny net movements don't overcome the table, so the cable
+    // comes fully to rest instead of creeping.
+    for (let i = 1; i < n - 1; i++) {
+      if (pinned(i)) continue;
+      if (Math.hypot(pts[i].x - prev[i].x, pts[i].y - prev[i].y) < STATIC_FRICTION) {
+        pts[i].x = prev[i].x;
+        pts[i].y = prev[i].y;
+      }
+    }
   }
 
   // Smooth path through the points (quadratic curves between segment midpoints).
