@@ -14,7 +14,7 @@ This is a second take on [harmony](https://github.com/rsk7/harmony) (2015), whic
 - **Play:** the **keyboard** module maps your computer keys like a piano (`a w s e d f t g y h u j k o l p ;`, with `z`/`x` to change octave). Oscillators, envelopes, the sampler and the drums can also be bound to a single key with **bind key**.
 - **Knobs:** drag up/down or scroll. Hold shift for fine control, double-click to reset.
 - **Collapse:** the chevron on each module (or double-clicking its title) switches between the full panel and a compact one with just the main controls. Jacks stay put.
-- **Cables:** choose physics-simulated cables that swing and sag, or straight right-angle wires. **Cables behind** greys them out and moves them under the modules.
+- **Cables:** choose physics-simulated cables that swing and sag (with a stiff ↔ floppy slider), or straight right-angle wires. **Cables behind** greys them out and moves them under the modules.
 - Your patch is saved in the browser automatically. **new patch** starts over.
 
 Start from a preset in the add menu (**drum kit**, **synth voice**, **arp voice**) to hear something right away. Presets patch themselves into the speaker if there is one.

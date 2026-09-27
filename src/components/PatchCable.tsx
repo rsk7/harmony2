@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { getSmoothStepPath, Position, type ConnectionLineComponentProps, type Edge, type EdgeProps } from "@xyflow/react";
-import { Rope, slackLength } from "../physics/rope";
+import { Rope, ropeFeel, slackLength } from "../physics/rope";
 import { useView } from "./settings";
 
 export type CableData = { color: string };
@@ -44,11 +44,15 @@ type Ends = { a: Vec; aDir: Vec; b: Vec; bDir: Vec };
 const along = (p: Vec, dir: Vec, d: number): Vec => ({ x: p.x + dir.x * d, y: p.y + dir.y * d });
 
 // Runs a rope simulation every frame between the backs of the two plugs and writes
-// the path straight to the given SVG paths, bypassing React. `grow` lets the
-// dragged cable pay out more length.
+// the path straight to the given SVG paths, bypassing React. A cable's length is set
+// by the distance it was patched across; floppiness adds slack on top, live.
+// `grow` lets the dragged cable pay out more length as it's pulled.
 function useRope(ends: Ends, paths: React.RefObject<(SVGPathElement | null)[]>, grow = false) {
   const endsRef = useRef(ends);
   endsRef.current = ends;
+  const { floppiness } = useView();
+  const feelRef = useRef(ropeFeel(floppiness));
+  feelRef.current = ropeFeel(floppiness);
 
   useEffect(() => {
     const tails = () => {
@@ -56,12 +60,16 @@ function useRope(ends: Ends, paths: React.RefObject<(SVGPathElement | null)[]>, 
       return [along(a, aDir, PLUG_LENGTH), along(b, bDir, PLUG_LENGTH)] as const;
     };
     const [a0, b0] = tails();
-    const rope = new Rope(a0, b0, slackLength(a0, b0));
+    let span = Math.hypot(b0.x - a0.x, b0.y - a0.y);
+    const rope = new Rope(a0, b0, slackLength(span, feelRef.current));
     let raf = 0;
     const tick = () => {
       const [a, b] = tails();
-      if (grow) rope.setLength(Math.max(rope.length, slackLength(a, b)));
-      rope.step(a, b, endsRef.current.aDir, endsRef.current.bDir);
+      const feel = feelRef.current;
+      if (grow) span = Math.max(span, Math.hypot(b.x - a.x, b.y - a.y));
+      const length = slackLength(span, feel);
+      if (length !== rope.length) rope.setLength(length);
+      rope.step(a, b, feel, endsRef.current.aDir, endsRef.current.bDir);
       const d = rope.path();
       paths.current.forEach((p) => p?.setAttribute("d", d));
       raf = requestAnimationFrame(tick);

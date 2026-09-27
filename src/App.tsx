@@ -261,6 +261,21 @@ function Patchbay() {
               </button>
             ))}
           </div>
+          {view.cables === "physics" && (
+            <label className="floppiness" title="how much the cables sag and swing">
+              <span>stiff</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={view.floppiness}
+                aria-label="cable floppiness"
+                onChange={(e) => setView((v) => ({ ...v, floppiness: +e.target.value }))}
+              />
+              <span>floppy</span>
+            </label>
+          )}
           <button
             className={view.cablesBack ? "selected" : ""}
             aria-pressed={view.cablesBack}

@@ -58,7 +58,7 @@ input:focus-visible {
 .view-options {
   position: absolute;
   top: 16px;
-  z-index: 10;
+  z-index: 2000; /* above the cable layer (1001) */
   display: flex;
   align-items: center;
   gap: 8px;
@@ -162,11 +162,25 @@ input:focus-visible {
   }
 }
 
+.floppiness {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.floppiness input {
+  width: 90px;
+  accent-color: var(--ink);
+}
+
 /* ---- palette ---- */
 
 .palette {
   position: fixed;
-  z-index: 20;
+  z-index: 2100;
   width: 320px;
   max-width: calc(100vw - 32px);
   background: var(--page);

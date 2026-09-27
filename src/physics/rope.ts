@@ -4,9 +4,27 @@
 type Vec = { x: number; y: number };
 
 const GRAVITY = 2200; // px/s²
-const DAMPING = 0.985; // velocity kept per step; lower = settles faster
-const ITERATIONS = 24; // constraint passes per step; higher = stiffer rope
+const ITERATIONS = 24; // constraint passes per step; higher = less stretchy rope
 const DT = 1 / 60;
+
+// Floppiness 0..1 maps to how much slack a cable has, how long it keeps swinging,
+// and how easily it bends.
+export function ropeFeel(floppiness: number) {
+  const f = Math.min(1, Math.max(0, floppiness));
+  return {
+    slackScale: 1 + 0.25 * f,
+    slackExtra: 10 + 120 * f, // px
+    damping: 0.93 + 0.06 * f, // velocity kept per step
+    stiffness: 0.25 - 0.23 * f, // pull toward neighbours' midpoint per pass
+  };
+}
+
+export type RopeFeel = ReturnType<typeof ropeFeel>;
+
+// Cables get some slack beyond the distance they span.
+export function slackLength(distance: number, feel: RopeFeel) {
+  return distance * feel.slackScale + feel.slackExtra;
+}
 
 export class Rope {
   private pts: Vec[];
@@ -30,7 +48,7 @@ export class Rope {
 
   // aDir/bDir: unit vectors the cable leaves each end along. When given, the first
   // link is pinned along it too, so the cable exits a stiff plug straight.
-  step(a: Vec, b: Vec, aDir?: Vec, bDir?: Vec) {
+  step(a: Vec, b: Vec, feel: RopeFeel, aDir?: Vec, bDir?: Vec) {
     const { pts, prev } = this;
     const n = pts.length;
     const g = GRAVITY * DT * DT;
@@ -54,8 +72,8 @@ export class Rope {
     for (let i = 1; i < n - 1; i++) {
       if (pinned(i)) continue;
       const p = pts[i];
-      const vx = (p.x - prev[i].x) * DAMPING;
-      const vy = (p.y - prev[i].y) * DAMPING;
+      const vx = (p.x - prev[i].x) * feel.damping;
+      const vy = (p.y - prev[i].y) * feel.damping;
       prev[i].x = p.x;
       prev[i].y = p.y;
       p.x += vx;
@@ -82,6 +100,13 @@ export class Rope {
         q.x -= dx * diff * wq;
         q.y -= dy * diff * wq;
       }
+      // Bending: nudge each free point toward the midpoint of its neighbours.
+      for (let i = 1; i < n - 1; i++) {
+        if (pinned(i)) continue;
+        const p = pts[i];
+        p.x += ((pts[i - 1].x + pts[i + 1].x) / 2 - p.x) * feel.stiffness;
+        p.y += ((pts[i - 1].y + pts[i + 1].y) / 2 - p.y) * feel.stiffness;
+      }
     }
     pin();
   }
@@ -98,9 +123,4 @@ export class Rope {
     const last = p[p.length - 1];
     return d + ` L ${last.x.toFixed(1)} ${last.y.toFixed(1)}`;
   }
-}
-
-// Cables come with some slack beyond the distance they were patched across.
-export function slackLength(a: Vec, b: Vec) {
-  return Math.hypot(b.x - a.x, b.y - a.y) * 1.15 + 80;
 }
