@@ -1,23 +1,39 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CATEGORIES, MODULES, PRESETS, type Preset } from "../modules";
+import type { SavedComponent } from "../patch";
 
 type Props = {
   at: { x: number; y: number }; // screen position
+  components: SavedComponent[];
   onAdd: (kind: string) => void;
   onPreset: (preset: Preset) => void;
+  onComponent: (c: SavedComponent) => void;
+  onDeleteComponent: (id: string) => void;
   onClose: () => void;
 };
 
 // Searchable module menu. Type to filter, ↑↓ to move, enter to add.
-export function Palette({ at, onAdd, onPreset, onClose }: Props) {
+export function Palette({ at, components, onAdd, onPreset, onComponent, onDeleteComponent, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
 
   const q = query.trim().toLowerCase();
-  const items = useMemo(() => {
+  type Item = { key: string; group: string; title: string; description: string; run: () => void; remove?: () => void };
+  const items = useMemo((): Item[] => {
     const match = (s: string) => !q || s.toLowerCase().includes(q);
     return [
+      ...components
+        .filter((c) => match(c.name) || match("my components"))
+        .map((c) => ({
+          key: "component:" + c.id,
+          group: "my components",
+          title: c.name,
+          description: `${c.data.modules.length} modules: ${c.data.modules.map((m) => m.type).join(", ")}`,
+          run: () => onComponent(c),
+          remove: () => onDeleteComponent(c.id),
+        })),
       ...CATEGORIES.flatMap((c) =>
         MODULES.filter((m) => m.category === c.id && (match(m.title) || match(m.description) || match(c.label))).map((m) => ({
           key: m.kind,
@@ -35,7 +51,7 @@ export function Palette({ at, onAdd, onPreset, onClose }: Props) {
         run: () => onPreset(p),
       })),
     ];
-  }, [q, onAdd, onPreset]);
+  }, [q, onAdd, onPreset, components, onComponent, onDeleteComponent]);
 
   useEffect(() => setCursor(0), [q]);
 
@@ -87,17 +103,34 @@ export function Palette({ at, onAdd, onPreset, onClose }: Props) {
           return (
             <div key={it.key}>
               {header && <div className="palette-group">{header}</div>}
-              <button
-                className={`palette-item${i === cursor ? " cursor" : ""}`}
-                onMouseEnter={() => setCursor(i)}
-                onClick={() => {
-                  it.run();
-                  onClose();
-                }}
-              >
-                <span className="palette-title">{it.title}</span>
-                <span className="palette-desc">{it.description}</span>
-              </button>
+              <div className="palette-row">
+                <button
+                  className={`palette-item${i === cursor ? " cursor" : ""}`}
+                  onMouseEnter={() => setCursor(i)}
+                  onClick={() => {
+                    it.run();
+                    onClose();
+                  }}
+                >
+                  <span className="palette-title">{it.title}</span>
+                  <span className="palette-desc">{it.description}</span>
+                </button>
+                {it.remove && (
+                  <button
+                    className={`menu-delete${confirmRemove === it.key ? " confirm" : ""}`}
+                    title="remove from my components"
+                    aria-label={`remove ${it.title} from my components`}
+                    onClick={() => {
+                      if (confirmRemove === it.key) {
+                        it.remove!();
+                        setConfirmRemove(null);
+                      } else setConfirmRemove(it.key);
+                    }}
+                  >
+                    {confirmRemove === it.key ? "remove?" : "×"}
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}

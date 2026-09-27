@@ -50,9 +50,10 @@ const along = (p: Vec, dir: Vec, d: number): Vec => ({ x: p.x + dir.x * d, y: p.
 function useRope(ends: Ends, paths: React.RefObject<(SVGPathElement | null)[]>, grow = false) {
   const endsRef = useRef(ends);
   endsRef.current = ends;
-  const { floppiness } = useView();
-  const feelRef = useRef(ropeFeel(floppiness));
-  feelRef.current = ropeFeel(floppiness);
+  const { floppiness, cables } = useView();
+  const world = cables === "hanging" ? "hanging" : "table";
+  const feelRef = useRef(ropeFeel(floppiness, world));
+  feelRef.current = ropeFeel(floppiness, world);
 
   useEffect(() => {
     const tails = () => {
@@ -61,7 +62,7 @@ function useRope(ends: Ends, paths: React.RefObject<(SVGPathElement | null)[]>, 
     };
     const [a0, b0] = tails();
     let span = Math.hypot(b0.x - a0.x, b0.y - a0.y);
-    const rope = new Rope(a0, b0, slackLength(span, feelRef.current));
+    const rope = new Rope(a0, b0, slackLength(span, feelRef.current), feelRef.current.world);
     let raf = 0;
     const tick = () => {
       const [a, b] = tails();
@@ -127,7 +128,7 @@ function StraightCable({ ends, color, interactive, positions }: CableProps) {
 
 function Cable(props: CableProps) {
   const { cables } = useView();
-  const Body = cables === "physics" ? PhysicsCable : StraightCable;
+  const Body = cables === "straight" ? StraightCable : PhysicsCable;
   return (
     <>
       <Body {...props} />

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -10,67 +10,64 @@ import {
   useReactFlow,
   type Connection,
 } from "@xyflow/react";
-import { allInstances, getInstance, moduleDef, reconcile, resumeAudio } from "./audio/engine";
+import { allInstances, getInstance, reconcile, resumeAudio } from "./audio/engine";
 import type { Instance } from "./audio/types";
-import { defaultParams, ModuleNode, type ModuleFlowNode } from "./components/ModuleNode";
+import { ComponentNode, SAVE_COMPONENT_EVENT, UNGROUP_EVENT } from "./components/ComponentNode";
+import { GroupDialog } from "./components/GroupDialog";
+import { ModuleNode } from "./components/ModuleNode";
 import { Palette } from "./components/Palette";
 import { CableConnectionLine, PatchCable, type CableEdge } from "./components/PatchCable";
-import { DEFAULT_VIEW, ViewContext, type ViewSettings } from "./components/settings";
+import { migrateView, ViewContext, type ViewSettings } from "./components/settings";
+import { SetupsMenu } from "./components/SetupsMenu";
 import { MODULES, type Preset } from "./modules";
+import type { Setup } from "./modules/setups";
+import {
+  buildLayout,
+  cable,
+  COMPONENT,
+  deserialize,
+  flatten,
+  groupModules,
+  instantiate,
+  isComponent,
+  makeNode,
+  numberedTitles,
+  portCandidates,
+  savedComponents,
+  savedSetups,
+  serialize,
+  storage,
+  ungroup,
+  type PatchNode,
+  type PortCandidate,
+  type SavedComponent,
+  type SavedSetup,
+} from "./patch";
 
-const nodeTypes = Object.fromEntries(MODULES.map((m) => [m.kind, ModuleNode]));
+const nodeTypes = { ...Object.fromEntries(MODULES.map((m) => [m.kind, ModuleNode])), [COMPONENT]: ComponentNode };
 const edgeTypes = { cable: PatchCable };
 
-// Saturated picks in the spirit of harmony's random key colors, all readable on white.
-const COLORS = [
-  "#FF6347", "#1E90FF", "#FFB300", "#32CD32", "#FF1493", "#9370DB",
-  "#20B2AA", "#FF8C00", "#DC143C", "#00BFFF", "#8A2BE2", "#3CB371",
-];
-const randomColor = () => COLORS[Math.floor(Math.random() * COLORS.length)];
-const newId = () => crypto.randomUUID().slice(0, 8);
-
-function makeNode(kind: string, x: number, y: number, extra: Partial<ModuleFlowNode["data"]> = {}): ModuleFlowNode {
-  const def = moduleDef(kind)!;
-  return {
-    id: newId(),
-    type: kind,
-    position: { x, y },
-    data: { color: randomColor(), ...extra, params: { ...defaultParams(def), ...extra.params } },
-  };
-}
-
-// ---- persistence (per browser, a convenience only) ----
-
+// The working patch autosaves here (per browser, a convenience only).
 const PATCH_KEY = "patchbay:patch:v1";
 const VIEW_KEY = "patchbay:view:v1";
 
-function load<T>(key: string): T | null {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
-  }
-}
+type Patch = { nodes: PatchNode[]; edges: CableEdge[]; name?: string };
 
-function save(key: string, value: unknown) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // storage full or blocked; the patch just won't survive a reload
-  }
-}
-
-function starterPatch(): { nodes: ModuleFlowNode[]; edges: CableEdge[] } {
+function starterPatch(): Patch {
   return { nodes: [makeNode("oscillator", 0, 0), makeNode("speaker", 380, 20)], edges: [] };
 }
 
-function loadPatch() {
-  const p = load<{ nodes: ModuleFlowNode[]; edges: CableEdge[] }>(PATCH_KEY);
-  if (!p?.nodes?.length) return starterPatch();
-  const nodes = p.nodes.filter((n) => n.type && moduleDef(n.type));
-  const ids = new Set(nodes.map((n) => n.id));
-  return { nodes, edges: (p.edges ?? []).filter((e) => ids.has(e.source) && ids.has(e.target)) };
+function loadWorkingPatch(): Patch {
+  try {
+    const p = deserialize(storage.load(PATCH_KEY, null));
+    return p.nodes.length ? p : starterPatch();
+  } catch {
+    return starterPatch();
+  }
+}
+
+function slug(name: string) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "patch";
 }
 
 // ---- keyboard ----
@@ -80,8 +77,9 @@ function isTyping(e: KeyboardEvent) {
   return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
 }
 
-// Routes computer-keyboard presses to modules (bound keys, the keyboard module…).
-function useKeyRouting(nodesRef: React.RefObject<ModuleFlowNode[]>) {
+// Routes computer-keyboard presses to modules (bound keys, the keyboard module…),
+// including modules inside custom components.
+function useKeyRouting(instanceIds: React.RefObject<string[]>) {
   useEffect(() => {
     const pressed = new Map<string, Instance[]>();
 
@@ -90,8 +88,8 @@ function useKeyRouting(nodesRef: React.RefObject<ModuleFlowNode[]>) {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || isTyping(e)) return;
       const key = e.key.toLowerCase();
       if (pressed.has(key)) return;
-      const used = nodesRef.current
-        .map((n) => getInstance(n.id))
+      const used = instanceIds.current
+        .map((id) => getInstance(id))
         .filter((inst): inst is Instance => !!inst?.onKey?.(key, true));
       if (!used.length) return;
       e.preventDefault(); // e.g. space shouldn't scroll
@@ -115,45 +113,116 @@ function useKeyRouting(nodesRef: React.RefObject<ModuleFlowNode[]>) {
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", releaseAll);
     };
-  }, [nodesRef]);
+  }, [instanceIds]);
 }
 
 // ---- app ----
 
+type Toast = { text: string; undo?: Patch };
+
 function Patchbay() {
-  const [initial] = useState(loadPatch);
-  const [nodes, setNodes, onNodesChange] = useNodesState<ModuleFlowNode>(initial.nodes);
+  const [initial] = useState(loadWorkingPatch);
+  const [nodes, setNodes, onNodesChange] = useNodesState<PatchNode>(initial.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState<CableEdge>(initial.edges);
-  const [view, setView] = useState<ViewSettings>(() => ({ ...DEFAULT_VIEW, ...load<ViewSettings>(VIEW_KEY) }));
-  // Palette position on screen; `center` drops new modules mid-screen instead of at it.
+  const [patchName, setPatchName] = useState(initial.name ?? "");
+  const [view, setView] = useState<ViewSettings>(() => migrateView(storage.load<ViewSettings | null>(VIEW_KEY, null)));
   const [palette, setPalette] = useState<{ x: number; y: number; center?: boolean } | null>(null);
-  const [confirmClear, setConfirmClear] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [grouping, setGrouping] = useState<{ ids: Set<string>; candidates: PortCandidate[] } | null>(null);
+  const [setups, setSetups] = useState<SavedSetup[]>(savedSetups.list);
+  const [library, setLibrary] = useState<SavedComponent[]>(savedComponents.list);
+  const [toast, setToast] = useState<Toast | null>(null);
   const { screenToFlowPosition, fitView } = useReactFlow();
 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
-  useKeyRouting(nodesRef);
+  const edgesRef = useRef(edges);
+  edgesRef.current = edges;
 
-  useEffect(() => reconcile(nodes, edges), [nodes, edges]);
+  const flat = useMemo(() => flatten(nodes, edges), [nodes, edges]);
+  const instanceIds = useRef<string[]>([]);
+  instanceIds.current = flat.nodes.map((n) => n.id);
+  useKeyRouting(instanceIds);
+
+  useEffect(() => reconcile(flat.nodes, flat.edges), [flat]);
 
   useEffect(() => {
-    const t = setTimeout(() => save(PATCH_KEY, { nodes, edges }), 400);
+    const t = setTimeout(() => storage.store(PATCH_KEY, serialize(nodes, edges, patchName || undefined)), 400);
     return () => clearTimeout(t);
-  }, [nodes, edges]);
-  useEffect(() => save(VIEW_KEY, view), [view]);
+  }, [nodes, edges, patchName]);
+  useEffect(() => void storage.store(VIEW_KEY, view), [view]);
 
   useEffect(() => {
-    if (!confirmClear) return;
-    const t = setTimeout(() => setConfirmClear(false), 3000);
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), toast.undo ? 8000 : 4000);
     return () => clearTimeout(t);
-  }, [confirmClear]);
+  }, [toast]);
 
-  const cableColor = (sourceId: string) => nodesRef.current.find((n) => n.id === sourceId)?.data.color ?? "#b0b0b0";
+  // ---- replacing the whole patch (with undo) ----
+
+  const replacePatch = useCallback(
+    (next: Patch, message: string) => {
+      const before = { nodes: nodesRef.current, edges: edgesRef.current, name: patchName };
+      setNodes(next.nodes);
+      setEdges(next.edges);
+      setPatchName(next.name ?? "");
+      setToast({ text: message, undo: before });
+      setTimeout(() => void fitView({ duration: 400, maxZoom: 1, padding: 0.15 }), 80);
+    },
+    [fitView, patchName, setEdges, setNodes],
+  );
+
+  const undo = () => {
+    if (!toast?.undo) return;
+    setNodes(toast.undo.nodes);
+    setEdges(toast.undo.edges);
+    setPatchName(toast.undo.name ?? "");
+    setToast(null);
+  };
+
+  const loadBuiltIn = (s: Setup) => replacePatch({ ...buildLayout(s.layout), name: s.title }, `loaded “${s.title}”`);
+  const loadSaved = (s: SavedSetup) => {
+    try {
+      replacePatch(deserialize(s.patch), `loaded “${s.name}”`);
+    } catch (e) {
+      setToast({ text: (e as Error).message });
+    }
+  };
+
+  const saveSetup = (name: string) => {
+    const entry = savedSetups.save(name, nodesRef.current, edgesRef.current);
+    setSetups(savedSetups.list());
+    setPatchName(name);
+    setToast({ text: entry ? `saved “${name}”` : "couldn't save: browser storage is full or blocked" });
+  };
+
+  const exportFile = () => {
+    const data = serialize(nodesRef.current, edgesRef.current, patchName || undefined);
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${slug(patchName || "patch")}.harmony2.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const importFile = async (file: File) => {
+    try {
+      const p = deserialize(JSON.parse(await file.text()));
+      if (!p.nodes.length) throw new Error("That patch has no modules this version knows.");
+      replacePatch({ ...p, name: p.name ?? file.name.replace(/\.harmony2\.json$|\.json$/, "") }, `imported ${file.name}`);
+    } catch (e) {
+      setToast({ text: e instanceof SyntaxError ? "That file isn't valid JSON." : (e as Error).message });
+    }
+  };
+
+  // ---- adding things ----
 
   const onConnect = useCallback(
     (c: Connection) => {
       resumeAudio();
-      setEdges((es) => addEdge({ ...c, type: "cable", data: { color: cableColor(c.source) } }, es));
+      const color = nodesRef.current.find((n) => n.id === c.source)?.data.color ?? "#b0b0b0";
+      setEdges((es) => addEdge({ ...c, type: "cable", data: { color } }, es));
     },
     [setEdges],
   );
@@ -165,68 +234,81 @@ function Patchbay() {
     return screenToFlowPosition(s);
   };
 
-  const addModule = useCallback(
-    (kind: string) => {
-      const p = dropPoint();
-      setNodes((ns) => [...ns.map((n) => ({ ...n, selected: false })), { ...makeNode(kind, p.x, p.y), selected: true }]);
-    },
-    [palette, setNodes],
-  );
+  const place = (node: PatchNode) =>
+    setNodes((ns) => [...ns.map((n) => ({ ...n, selected: false })), { ...node, selected: true }]);
 
-  const addPreset = useCallback(
-    (preset: Preset) => {
-      // Presets are big: put them below everything already on the page, then show them.
-      const existing = nodesRef.current;
-      const p = existing.length
-        ? {
-            x: Math.min(...existing.map((n) => n.position.x)),
-            y: Math.max(...existing.map((n) => n.position.y + (n.measured?.height ?? 200))) + 140,
-          }
-        : dropPoint();
-      const minX = Math.min(...preset.modules.map((m) => m.x));
-      const minY = Math.min(...preset.modules.map((m) => m.y));
-      p.x -= minX;
-      p.y -= minY;
-      const made = preset.modules.map((m) =>
-        makeNode(m.kind, p.x + m.x, p.y + m.y, { params: m.params ?? {}, collapsed: m.collapsed }),
-      );
-      const cables: CableEdge[] = preset.cables.map(([from, fromPort, to, toPort]) => ({
-        id: newId(),
-        type: "cable",
-        source: made[from].id,
-        sourceHandle: fromPort,
-        target: made[to].id,
-        targetHandle: toPort,
-        data: { color: made[from].data.color },
-      }));
-      const speaker = nodesRef.current.find((n) => n.type === "speaker");
-      if (preset.output && speaker) {
-        const [from, port] = preset.output;
-        cables.push({
-          id: newId(),
-          type: "cable",
-          source: made[from].id,
-          sourceHandle: port,
-          target: speaker.id,
-          targetHandle: "in",
-          data: { color: made[from].data.color },
-        });
-      }
-      setNodes((ns) => [...ns, ...made]);
-      setEdges((es) => [...es, ...cables]);
-      // Wait a beat so React Flow has measured the new modules before framing them.
-      setTimeout(() => void fitView({ nodes: made.map((n) => ({ id: n.id })), duration: 400, maxZoom: 1, padding: 0.2 }), 80);
-    },
-    [palette, setNodes, setEdges],
-  );
-
-  const clear = () => {
-    if (!confirmClear) return setConfirmClear(true);
-    const fresh = starterPatch();
-    setNodes(fresh.nodes);
-    setEdges(fresh.edges);
-    setConfirmClear(false);
+  const addModule = (kind: string) => {
+    const p = dropPoint();
+    place(makeNode(kind, p.x, p.y));
   };
+
+  const addComponent = (c: SavedComponent) => {
+    const p = dropPoint();
+    place(instantiate(c, p.x, p.y));
+  };
+
+  const addPreset = (preset: Preset) => {
+    // Presets are big: put them below everything already on the page, then show them.
+    const existing = nodesRef.current;
+    const minX = Math.min(...preset.modules.map((m) => m.x));
+    const minY = Math.min(...preset.modules.map((m) => m.y));
+    const origin = existing.length
+      ? {
+          x: Math.min(...existing.map((n) => n.position.x)) - minX,
+          y: Math.max(...existing.map((n) => n.position.y + (n.measured?.height ?? 200))) + 140 - minY,
+        }
+      : dropPoint();
+    const { nodes: made, edges: cables } = buildLayout(preset, origin);
+    const speaker = existing.find((n) => n.type === "speaker");
+    if (preset.output && speaker) cables.push(cable(made[preset.output[0]], preset.output[1], speaker, "in"));
+    setNodes((ns) => [...ns, ...made]);
+    setEdges((es) => [...es, ...cables]);
+    setTimeout(() => void fitView({ nodes: made.map((n) => ({ id: n.id })), duration: 400, maxZoom: 1, padding: 0.2 }), 80);
+  };
+
+  // ---- components ----
+
+  const selected = nodes.filter((n) => n.selected);
+  const selectedModules = selected.filter((n) => !isComponent(n));
+
+  const startGrouping = () => {
+    const ids = new Set(selectedModules.map((n) => n.id));
+    setGrouping({ ids, candidates: portCandidates(nodesRef.current, edgesRef.current, ids) });
+  };
+
+  const makeComponent = (opts: { name: string; ports: PortCandidate[]; shown: string[]; save: boolean }) => {
+    if (!grouping) return;
+    const result = groupModules(nodesRef.current, edgesRef.current, grouping.ids, opts);
+    setNodes(result.nodes);
+    setEdges(result.edges);
+    if (opts.save) {
+      savedComponents.save(result.component.data);
+      setLibrary(savedComponents.list());
+    }
+    setGrouping(null);
+    setToast({ text: `made “${opts.name}”${opts.save ? ", added to my components" : ""}` });
+  };
+
+  useEffect(() => {
+    const onUngroup = (e: Event) => {
+      const r = ungroup(nodesRef.current, edgesRef.current, (e as CustomEvent<string>).detail);
+      setNodes(r.nodes);
+      setEdges(r.edges);
+    };
+    const onSave = (e: Event) => {
+      const comp = nodesRef.current.find((n) => n.id === (e as CustomEvent<string>).detail);
+      if (!comp || !isComponent(comp)) return;
+      const ok = savedComponents.save(comp.data);
+      setLibrary(savedComponents.list());
+      setToast({ text: ok ? `“${comp.data.name}” saved to my components` : "couldn't save: browser storage is full or blocked" });
+    };
+    window.addEventListener(UNGROUP_EVENT, onUngroup);
+    window.addEventListener(SAVE_COMPONENT_EVENT, onSave);
+    return () => {
+      window.removeEventListener(UNGROUP_EVENT, onUngroup);
+      window.removeEventListener(SAVE_COMPONENT_EVENT, onSave);
+    };
+  }, [setEdges, setNodes]);
 
   return (
     <ViewContext.Provider value={view}>
@@ -242,15 +324,16 @@ function Patchbay() {
           <button className="primary" onClick={() => setPalette({ x: 24, y: 64, center: true })}>
             + add module
           </button>
-          <button className={confirmClear ? "danger" : ""} onClick={clear}>
-            {confirmClear ? "clear everything?" : "new patch"}
+          <button className={menu ? "selected" : ""} aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
+            setups ▾
           </button>
+          {patchName && <span className="patch-name">{patchName}</span>}
         </div>
 
         <div className="view-options" role="group" aria-label="cable display">
           <span className="view-label">cables</span>
           <div className="segmented">
-            {(["physics", "straight"] as const).map((c) => (
+            {(["table", "straight", "hanging"] as const).map((c) => (
               <button
                 key={c}
                 className={view.cables === c ? "selected" : ""}
@@ -261,8 +344,8 @@ function Patchbay() {
               </button>
             ))}
           </div>
-          {view.cables === "physics" && (
-            <label className="floppiness" title="how much the cables sag and swing">
+          {view.cables !== "straight" && (
+            <label className="floppiness" title="how much slack the cables have">
               <span>stiff</span>
               <input
                 type="range"
@@ -298,7 +381,7 @@ function Patchbay() {
           connectionRadius={30}
           deleteKeyCode={["Backspace", "Delete"]}
           zoomOnDoubleClick={false}
-          minZoom={0.2}
+          minZoom={0.15}
           fitView
           fitViewOptions={{ maxZoom: 1, padding: 0.3 }}
           proOptions={{ hideAttribution: true }}
@@ -306,13 +389,71 @@ function Patchbay() {
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="#e2e2e2" />
         </ReactFlow>
 
+        {selected.length >= 2 && !grouping && (
+          <div className="selection-bar">
+            <span>{selected.length} selected</span>
+            {selected.some(isComponent) ? (
+              <span className="dim">ungroup components first to combine them</span>
+            ) : (
+              <button className="primary" onClick={startGrouping}>
+                make component
+              </button>
+            )}
+          </div>
+        )}
+
+        {menu && (
+          <SetupsMenu
+            saved={setups}
+            currentName={patchName}
+            onLoadBuiltIn={loadBuiltIn}
+            onLoadSaved={loadSaved}
+            onDeleteSaved={(id) => {
+              savedSetups.remove(id);
+              setSetups(savedSetups.list());
+            }}
+            onSave={saveSetup}
+            onExport={exportFile}
+            onImport={(f) => void importFile(f)}
+            onNew={() => replacePatch(starterPatch(), "new patch")}
+            onClose={() => setMenu(false)}
+          />
+        )}
+
         {palette && (
-          <Palette at={palette} onAdd={addModule} onPreset={addPreset} onClose={() => setPalette(null)} />
+          <Palette
+            at={palette}
+            components={library}
+            onAdd={addModule}
+            onPreset={addPreset}
+            onComponent={addComponent}
+            onDeleteComponent={(id) => {
+              savedComponents.remove(id);
+              setLibrary(savedComponents.list());
+            }}
+            onClose={() => setPalette(null)}
+          />
+        )}
+
+        {grouping && (
+          <GroupDialog
+            candidates={grouping.candidates}
+            modules={[...numberedTitles(nodes, grouping.ids)].map(([id, title]) => ({ id, title }))}
+            onCreate={makeComponent}
+            onCancel={() => setGrouping(null)}
+          />
+        )}
+
+        {toast && (
+          <div className="toast" role="status">
+            <span>{toast.text}</span>
+            {toast.undo && <button onClick={undo}>undo</button>}
+          </div>
         )}
 
         <div className="hint">
-          double-click the background to add · drag from a jack to patch · select + ⌫ to remove · double-click a
-          module's title to collapse
+          double-click the background to add · drag from a jack to patch · shift-drag to select several · select + ⌫ to
+          remove
         </div>
       </div>
     </ViewContext.Provider>

@@ -1,22 +1,39 @@
-// Verlet rope for cables lying on a table, seen from above: gravity points into the
-// screen, so nothing pulls the cable sideways. Table friction bleeds off motion,
-// bending stiffness keeps curves smooth, and any slack bows the cable out into an arc.
-// Both ends are pinned to the plugs.
+// Verlet rope for patch cables, in one of two worlds:
+//   table:   seen from above, gravity points into the screen. Nothing pulls the cable
+//            sideways; table friction bleeds off motion and slack bows it into an arc.
+//   hanging: gravity points down the screen, so cables sag and swing.
+// Bending stiffness keeps curves smooth. Both ends are pinned to the plugs.
 
 type Vec = { x: number; y: number };
 
 const ITERATIONS = 24; // constraint passes per step; higher = less stretchy rope
-const STATIC_FRICTION = 0.05; // px/frame; a point that would move less than this stays put
+const DT = 1 / 60;
 
-// Floppiness 0..1 maps to how much slack a cable has, how easily it bends,
-// and how far it slides across the table after being tugged.
-export function ropeFeel(floppiness: number) {
+export type RopeWorld = "table" | "hanging";
+
+// Floppiness 0..1 maps to how much slack a cable has, how easily it bends, and how
+// long it keeps moving (sliding on the table, or swinging when hanging).
+export function ropeFeel(floppiness: number, world: RopeWorld) {
   const f = Math.min(1, Math.max(0, floppiness));
+  if (world === "hanging") {
+    return {
+      world,
+      slackScale: 1 + 0.25 * f,
+      slackExtra: 10 + 120 * f, // px
+      damping: 0.93 + 0.06 * f, // velocity kept per step
+      stiffness: 0.08 - 0.06 * f, // how hard skip-one springs resist bending, per pass
+      gravity: 2200 * DT * DT, // px/frame², down the screen
+      staticFriction: 0, // swinging cables never stick
+    };
+  }
   return {
+    world,
     slackScale: 1 + 0.3 * f,
     slackExtra: 10 + 100 * f, // px
     damping: 0.75 + 0.12 * f, // velocity kept per step, i.e. 1 - table friction
-    stiffness: 0.12 - 0.09 * f, // how hard skip-one springs resist bending, per pass
+    stiffness: 0.12 - 0.09 * f,
+    gravity: 0, // into the table, so no in-plane pull
+    staticFriction: 0.05, // px/frame; a point that would move less than this stays put
   };
 }
 
@@ -32,14 +49,15 @@ export class Rope {
   private prev: Vec[];
   segment: number;
 
-  constructor(a: Vec, b: Vec, public length: number, readonly count = 28) {
+  constructor(a: Vec, b: Vec, public length: number, world: RopeWorld, readonly count = 28) {
     this.segment = length / (count - 1);
-    // Start as a parabolic bow whose arc length roughly matches the cable, bulging
-    // toward the bottom of the screen, so the cable is already lying slack.
+    // On the table, start as a parabolic bow whose arc length roughly matches the
+    // cable, bulging toward the bottom of the screen, so it's already lying slack.
+    // Hanging cables start straight and let gravity drop them into a swinging sag.
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const chord = Math.hypot(dx, dy) || 1;
-    const bow = length > chord ? Math.sqrt((3 * chord * (length - chord)) / 8) : 0;
+    const bow = world === "table" && length > chord ? Math.sqrt((3 * chord * (length - chord)) / 8) : 0;
     let nx = -dy / chord;
     let ny = dx / chord;
     if (ny < 0) (nx = -nx), (ny = -ny);
@@ -78,7 +96,7 @@ export class Rope {
       }
     };
 
-    // Inertia with table friction; no in-plane gravity.
+    // Inertia, friction and (when hanging) gravity.
     for (let i = 1; i < n - 1; i++) {
       if (pinned(i)) continue;
       const p = pts[i];
@@ -87,7 +105,7 @@ export class Rope {
       prev[i].x = p.x;
       prev[i].y = p.y;
       p.x += vx;
-      p.y += vy;
+      p.y += vy + feel.gravity;
     }
 
     for (let k = 0; k < ITERATIONS; k++) {
@@ -136,9 +154,10 @@ export class Rope {
 
     // Static friction: tiny net movements don't overcome the table, so the cable
     // comes fully to rest instead of creeping.
+    if (!feel.staticFriction) return;
     for (let i = 1; i < n - 1; i++) {
       if (pinned(i)) continue;
-      if (Math.hypot(pts[i].x - prev[i].x, pts[i].y - prev[i].y) < STATIC_FRICTION) {
+      if (Math.hypot(pts[i].x - prev[i].x, pts[i].y - prev[i].y) < feel.staticFriction) {
         pts[i].x = prev[i].x;
         pts[i].y = prev[i].y;
       }

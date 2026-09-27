@@ -14,10 +14,25 @@ This is a second take on [harmony](https://github.com/rsk7/harmony) (2015), whic
 - **Play:** the **keyboard** module maps your computer keys like a piano (`a w s e d f t g y h u j k o l p ;`, with `z`/`x` to change octave). Oscillators, envelopes, the sampler and the drums can also be bound to a single key with **bind key**.
 - **Knobs:** drag up/down or scroll. Hold shift for fine control, double-click to reset.
 - **Collapse:** the chevron on each module (or double-clicking its title) switches between the full panel and a compact one with just the main controls. Jacks stay put.
-- **Cables:** choose physics-simulated cables that lie on the table like real patch cords (with a stiff ↔ floppy slider), or straight right-angle wires. **Cables behind** greys them out and moves them under the modules.
-- Your patch is saved in the browser automatically. **new patch** starts over.
+- **Cables:** **table** (the default) simulates cords lying flat on a table, seen from above. **hanging** turns gravity toward the bottom of the screen so they sag and swing. **straight** draws right-angle wires. The stiff ↔ floppy slider sets how much slack the physics cables have. **Cables behind** greys them out and moves them under the modules.
 
-Start from a preset in the add menu (**drum kit**, **synth voice**, **arp voice**) to hear something right away. Presets patch themselves into the speaker if there is one.
+### Setups, saving and files
+
+Open **setups** for complete, ready-to-play patches: *techno loop*, *sample & hold bleeps*, *fm bells*, *wobble bass*, *ocean waves*, *generative ambient*, *arp + drums* and *scope lab*. Loading one replaces the canvas, and **undo** brings your patch back.
+
+The same menu saves the current patch under a name (kept in this browser), lists your saved setups, and **exports** the patch (modules, knob settings, positions and cables) as a `.harmony2.json` file you can **import** again or share. The working patch also autosaves as you go.
+
+The add menu also has smaller **presets** (*drum kit*, *synth voice*, *arp voice*) that drop in next to what you have and patch themselves into the speaker.
+
+### Custom components
+
+Build your own modules out of the built-in ones:
+
+1. Shift-drag a box around some modules (or ⌘/Ctrl-click them) and choose **make component**.
+2. Name it, pick which jacks it exposes (jacks with cables crossing the selection are ticked for you), and choose whose controls appear on its panel.
+3. It becomes a single box with those jacks and controls, and is added to **my components** in the add menu so you can drop in more copies.
+
+The ungroup button on a component turns it back into its modules; the save button stores its current settings to my components.
 
 ## Modules
 
